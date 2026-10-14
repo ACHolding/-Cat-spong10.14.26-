@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Cat's Pong 0.1</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"SST","Helvetica Neue",Arial,sans-serif;color:#fff}
+canvas{display:block;width:100vw;height:100vh}
+</style></head><body><canvas id="c"></canvas>
+<script>
+// Cat's Pong 0.1 — files=off, beeps n boops=true, PS5-style UI + WebAudio "sound engine"
+const cv=document.getElementById('c'),g=cv.getContext('2d');
+let W,H,S;function rs(){W=cv.width=innerWidth*devicePixelRatio;H=cv.height=innerHeight*devicePixelRatio;S=Math.min(W/1280,H/720)}addEventListener('resize',rs);rs();
+// ---- sound engine (synth only) ----
+let AC=null;function ac(){if(!AC)AC=new (window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();return AC}
+function tone(f,d=.08,type='sine',v=.18,slide=0,delay=0){const a=ac(),t=a.currentTime+delay,o=a.createOscillator(),gn=a.createGain(),fl=a.createBiquadFilter();
+o.type=type;o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+d);
+fl.type='lowpass';fl.frequency.value=4200;gn.gain.setValueAtTime(0,t);gn.gain.linearRampToValueAtTime(v,t+.008);gn.gain.exponentialRampToValueAtTime(.0001,t+d);
+o.connect(fl);fl.connect(gn);gn.connect(a.destination);o.start(t);o.stop(t+d+.05)}
+const SFX={move:()=>tone(880,.05,'sine',.12),select:()=>{tone(660,.09,'sine',.15);tone(990,.14,'sine',.12,0,.06)},
+back:()=>tone(520,.1,'sine',.12,-200),paddle:()=>{tone(440,.06,'square',.1);tone(880,.05,'sine',.08)},wall:()=>tone(300,.05,'triangle',.12),
+score:()=>{[523,659,784,1046].forEach((f,i)=>tone(f,.18,'sine',.13,0,i*.07))},lose:()=>{tone(400,.25,'sawtooth',.08,-250)},
+boot:()=>{[262,392,523,784].forEach((f,i)=>tone(f,.6,'sine',.09,0,i*.12))}};
+// ---- state ----
+const items=['Play','Help','About','Exit'];let sel=0,scene='menu',t0=performance.now(),parts=[];
+const keys={};let P,AI,B,ps=0,as=0,flash=0,booted=false;const WIN=7;
+function reset(){P={y:.5};AI={y:.5};serve(1);ps=as=0}
+function serve(d){B={x:.5,y:.5,vx:.42*d,vy:(Math.random()-.5)*.5,trail:[]}}
+// ---- input ----
+addEventListener('keydown',e=>{keys[e.key]=1;if(!booted){booted=true;SFX.boot()}
+ if(scene==='menu'){if(e.key==='ArrowUp'||e.key==='w'){sel=(sel+3)%4;SFX.move()}if(e.key==='ArrowDown'||e.key==='s'){sel=(sel+1)%4;SFX.move()}if(e.key==='Enter'||e.key===' ')pick()}
+ else if(e.key==='Escape'||e.key==='Backspace'){scene='menu';SFX.back()}
+ else if(scene==='over'&&e.key==='Enter'){reset();scene='play';SFX.select()}});
+addEventListener('keyup',e=>keys[e.key]=0);
+addEventListener('mousemove',e=>{if(scene==='play')P.y=e.clientY/innerHeight});
+addEventListener('click',e=>{if(!booted){booted=true;SFX.boot();return}if(scene==='menu'){const i=hit(e);if(i>=0){sel=i;pick()}}else if(scene!=='play'){scene='menu';SFX.back()}});
+function hit(e){const y=e.clientY*devicePixelRatio;for(let i=0;i<4;i++){const cy=H*.5+i*86*S;if(Math.abs(y-cy)<34*S)return i}return-1}
+function pick(){SFX.select();const it=items[sel];if(it==='Play'){reset();scene='play'}else if(it==='Help')scene='help';else if(it==='About')scene='about';else scene='exit'}
+// ---- drawing helpers ----
+function bg(t){const gr=g.createLinearGradient(0,0,W,H);gr.addColorStop(0,'#020a2a');gr.addColorStop(.5,'#0a1f6b');gr.addColorStop(1,'#000514');g.fillStyle=gr;g.fillRect(0,0,W,H);
+ for(let i=0;i<5;i++){const y=H*(.3+i*.12)+Math.sin(t/1400+i)*40*S;g.strokeStyle=`rgba(90,160,255,${.05+i*.015})`;g.lineWidth=60*S;g.beginPath();for(let x=0;x<=W;x+=20){g.lineTo(x,y+Math.sin(x/(300*S)+t/900+i)*30*S)}g.stroke()}
+ while(parts.length<70)parts.push({x:Math.random(),y:Math.random(),r:Math.random()*2+.5,s:Math.random()*.02+.005});
+ parts.forEach(p=>{p.y-=p.s/60;if(p.y<0)p.y=1;g.fillStyle='rgba(180,210,255,.5)';g.beginPath();g.arc(p.x*W,p.y*H,p.r*S,0,7);g.fill()})}
+function txt(s,x,y,sz,col='#fff',al='center',wt=300){g.font=`${wt} ${sz*S}px "Helvetica Neue",Arial`;g.textAlign=al;g.textBaseline='middle';g.fillStyle=col;g.fillText(s,x,y)}
+function glass(x,y,w,h,r,on){g.save();g.beginPath();g.roundRect(x,y,w,h,r);g.fillStyle=on?'rgba(255,255,255,.95)':'rgba(255,255,255,.07)';if(on){g.shadowColor='#6af';g.shadowBlur=40*S}g.fill();g.shadowBlur=0;g.strokeStyle='rgba(255,255,255,.25)';g.lineWidth=2*S;g.stroke();g.restore()}
+function logo(t){const y=H*.24;g.save();g.shadowColor='#4af';g.shadowBlur=30*S;txt("Cat's Pong",W/2,y,96,'#fff','center',200);g.restore();txt('0.1',W/2+330*S,y-30*S,32,'#8cf','center',600);
+ // cat ears
+ g.fillStyle='#fff';const ex=W/2-260*S;[[0],[60]].forEach(([o])=>{g.beginPath();g.moveTo(ex+o*S,y-50*S);g.lineTo(ex+(o+18)*S,y-90*S);g.lineTo(ex+(o+36)*S,y-50*S);g.fill()});
+ txt('◯  ✕  △  ▢',W/2,y+70*S,22,'rgba(200,220,255,.6)')}
+function panel(title,lines){logo(performance.now());glass(W/2-420*S,H*.38,840*S,H*.5,24*S,false);txt(title,W/2,H*.38+46*S,40,'#fff','center',400);
+ lines.forEach((l,i)=>txt(l,W/2,H*.38+110*S+i*44*S,24,'#cde'));txt('Esc / click  ·  Back',W/2,H*.9,20,'rgba(255,255,255,.5)')}
+// ---- game ----
+function update(dt){if(scene!=='play')return;const sp=1.1*dt;if(keys.ArrowUp||keys.w)P.y-=sp;if(keys.ArrowDown||keys.s)P.y+=sp;P.y=Math.max(.1,Math.min(.9,P.y));
+ AI.y+=Math.max(-.75*dt,Math.min(.75*dt,B.y-AI.y));AI.y=Math.max(.1,Math.min(.9,AI.y));
+ B.trail.push({x:B.x,y:B.y});if(B.trail.length>14)B.trail.shift();B.x+=B.vx*dt;B.y+=B.vy*dt;
+ if(B.y<.02||B.y>.98){B.vy*=-1;B.y=Math.max(.02,Math.min(.98,B.y));SFX.wall()}
+ const ph=.09;
+ if(B.x<.05&&B.vx<0&&Math.abs(B.y-P.y)<ph){B.vx=-B.vx*1.06;B.vy+=(B.y-P.y)*4;SFX.paddle();flash=1}
+ if(B.x>.95&&B.vx>0&&Math.abs(B.y-AI.y)<ph){B.vx=-B.vx*1.06;B.vy+=(B.y-AI.y)*4;SFX.paddle();flash=1}
+ if(B.x<0){as++;SFX.lose();serve(1)}if(B.x>1){ps++;SFX.score();serve(-1)}
+ if(ps>=WIN||as>=WIN){scene='over';ps>=WIN?SFX.score():SFX.lose()}}
+function drawGame(){const fx=W*.05,fy=H*.08,fw=W*.9,fh=H*.84;g.save();g.beginPath();g.roundRect(fx,fy,fw,fh,30*S);g.fillStyle='rgba(0,10,40,.55)';g.fill();g.strokeStyle='rgba(120,180,255,.35)';g.lineWidth=3*S;g.stroke();
+ g.setLineDash([14*S,18*S]);g.beginPath();g.moveTo(W/2,fy+20*S);g.lineTo(W/2,fy+fh-20*S);g.stroke();g.setLineDash([]);
+ const X=v=>fx+v*fw,Y=v=>fy+v*fh,pw=14*S,ph=.18*fh;
+ [[.03,P.y,'#7cf'],[.97,AI.y,'#f7c']].forEach(([x,y,c])=>{g.shadowColor=c;g.shadowBlur=30*S;g.fillStyle=c;g.beginPath();g.roundRect(X(x)-pw/2,Y(y)-ph/2,pw,ph,pw/2);g.fill()});
+ B.trail.forEach((p,i)=>{g.fillStyle=`rgba(255,255,255,${i/40})`;g.beginPath();g.arc(X(p.x),Y(p.y),10*S*i/14,0,7);g.fill()});
+ g.shadowColor='#fff';g.shadowBlur=40*S*(1+flash);g.fillStyle='#fff';g.beginPath();g.arc(X(B.x),Y(B.y),12*S,0,7);g.fill();g.restore();flash*=.9;
+ txt(ps,W*.4,H*.16,72,'#7cf','center',200);txt(as,W*.6,H*.16,72,'#f7c','center',200);txt("Cat's Pong 0.1",W/2,H*.05,18,'rgba(255,255,255,.5)')}
+// ---- loop ----
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;update(dt);bg(now);
+ if(!booted){logo(now);txt('Press any key or click to start',W/2,H*.62,28,`rgba(255,255,255,${.5+.5*Math.sin(now/400)})`)}
+ else if(scene==='menu'){logo(now);items.forEach((it,i)=>{const on=i===sel,w=360*S,h=64*S,x=W/2-w/2,y=H*.5+i*86*S-h/2;glass(x,y,w,h,32*S,on);txt(it,W/2,y+h/2,30,on?'#0a1a40':'#fff','center',on?500:300)});
+  txt('↑ ↓ choose  ·  Enter select',W/2,H*.93,20,'rgba(255,255,255,.5)')}
+ else if(scene==='play')drawGame();
+ else if(scene==='help')panel('Help',['Move with ↑ ↓, W / S, or the mouse.','Bounce the ball past the cat-bot paddle.','First to 7 points wins.','Esc returns to the menu at any time.']);
+ else if(scene==='about')panel('About',["Cat's Pong 0.1","One HTML file. No image or sound files.",'Every beep and boop is synthesized live.','Made by Flames Co. LLC with Dr Meow Meow 🐾']);
+ else if(scene==='over'){drawGame();glass(W/2-360*S,H*.38,720*S,H*.26,24*S,false);txt(ps>=WIN?'You win! 🐱':'Cat-bot wins!',W/2,H*.45,52,'#fff','center',300);txt('Enter to play again  ·  Esc for menu',W/2,H*.56,22,'#cde')}
+ else if(scene==='exit')panel('Thanks for playing!',['You can close this tab now.','Meow 🐾']);
+ requestAnimationFrame(frame)}
+reset();requestAnimationFrame(frame);
+</script></body></html>
